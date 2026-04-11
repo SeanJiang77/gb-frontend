@@ -19,7 +19,7 @@ export default function App() {
   const tabs = useMemo(
     () => [
       { key: "create", label: "创建房间", disabled: hasRoom },
-      { key: "players", label: "玩家设置", disabled: !hasRoom || gameStarted },
+      { key: "players", label: "房间设置", disabled: !hasRoom || gameStarted },
       { key: "assign", label: "发牌", disabled: !assignReady || gameStarted },
       { key: "gm", label: "主持面板", disabled: !gameStarted },
       { key: "log", label: "日志 / 撤销", disabled: !gameStarted },
@@ -68,7 +68,7 @@ export default function App() {
 
       {!gameStarted && hasRoom && tab !== "create" && (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-          当前流程必须按顺序进行：创建房间 - 玩家设置 - 发牌 - 主持面板。游戏开始后将锁定前置步骤，不能返回修改。
+          当前流程必须按顺序进行：创建房间 - 房间设置 - 发牌 - 主持面板。游戏开始后将锁定前置步骤，不能返回修改。
         </div>
       )}
 
