@@ -11,6 +11,34 @@ const ROLE_META = {
   [ROLES.VILLAGER]: { label: "平民", accent: "bg-stone-100 text-stone-700 border-stone-200" },
 };
 
+const NIGHT_STAGE_CONFIG = [
+  {
+    key: "guard",
+    label: "守卫守护",
+    getCompleted: (plan) => plan.guard.completed,
+  },
+  {
+    key: "wolves",
+    label: "狼人袭击",
+    getCompleted: (plan) => plan.wolves.completed,
+  },
+  {
+    key: "seer",
+    label: "预言家查验",
+    getCompleted: (plan) => plan.seer.completed,
+  },
+  {
+    key: "witchHeal",
+    label: "女巫救人",
+    getCompleted: (plan) => plan.witch.healDone,
+  },
+  {
+    key: "witchPoison",
+    label: "女巫毒人",
+    getCompleted: (plan) => plan.witch.poisonDone,
+  },
+];
+
 function createEmptyNightPlan() {
   return {
     guard: { targetSeat: null, completed: false },
@@ -65,22 +93,14 @@ function getRoleMeta(role) {
 }
 
 function nightStageLabel(stage) {
-  return (
-    {
-      guard: "守卫守护",
-      wolves: "狼人袭击",
-      seer: "预言家查验",
-      witchHeal: "女巫救人",
-      witchPoison: "女巫毒人",
-      done: "夜晚完成",
-    }[stage] ?? stage
-  );
+  if (stage === "done") return "夜晚完成";
+  return NIGHT_STAGE_CONFIG.find((item) => item.key === stage)?.label ?? stage;
 }
 
 function getNightActionButtonClass(active) {
   return active
-    ? "btn-primary"
-    : "rounded-2xl border border-gray-200 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-400 shadow-none cursor-not-allowed";
+    ? "btn-primary w-full justify-center rounded-2xl px-3 py-2 text-[13px] font-semibold leading-4 tracking-tight sm:text-sm"
+    : "w-full rounded-2xl border border-gray-200 bg-gray-100 px-3 py-2 text-[13px] font-semibold leading-4 tracking-tight text-gray-400 shadow-none cursor-not-allowed sm:text-sm";
 }
 
 function getNightStageDuration(stage, isFirstNight) {
@@ -218,6 +238,7 @@ export default function GMPanel() {
   );
 
   const midPoint = Math.ceil(sortedPlayers.length / 2);
+  const mobilePlayers = sortedPlayers;
   const leftPlayers = sortedPlayers.slice(0, midPoint);
   const rightPlayers = sortedPlayers.slice(midPoint);
   const currentSpeakerSeat = speechOrder[speechIndex] ?? null;
@@ -257,24 +278,34 @@ export default function GMPanel() {
     }),
     [sortedPlayers]
   );
+  const nightStageItems = useMemo(
+    () =>
+      NIGHT_STAGE_CONFIG.filter((item) => nightStageAvailability[item.key]).map((item, index) => ({
+        ...item,
+        completed: item.getCompleted(nightPlan),
+        order: index + 1,
+      })),
+    [nightPlan, nightStageAvailability]
+  );
   const currentNightStage = useMemo(() => {
     if (!inNight) return null;
 
-    const stages = [
-      ["guard", nightPlan.guard.completed],
-      ["wolves", nightPlan.wolves.completed],
-      ["seer", nightPlan.seer.completed],
-      ["witchHeal", nightPlan.witch.healDone],
-      ["witchPoison", nightPlan.witch.poisonDone],
-    ];
-
-    for (const [stageKey, completed] of stages) {
-      if (!nightStageAvailability[stageKey]) continue;
-      if (!completed) return stageKey;
+    for (const stage of nightStageItems) {
+      if (!stage.completed) return stage.key;
     }
 
     return "done";
-  }, [inNight, nightPlan, nightStageAvailability]);
+  }, [inNight, nightStageItems]);
+  const currentNightStageMeta = useMemo(() => {
+    if (!nightStageItems.length) return null;
+    if (currentNightStage === "done") return nightStageItems[nightStageItems.length - 1];
+    return nightStageItems.find((item) => item.key === currentNightStage) ?? null;
+  }, [currentNightStage, nightStageItems]);
+  const currentNightStageStatusLine = useMemo(() => {
+    if (!currentNightStageMeta) return "夜晚流程未启用";
+    const suffix = currentNightStage === "done" ? "（已完成）" : "";
+    return `step ${currentNightStageMeta.order}/${nightStageItems.length}：${currentNightStageMeta.label}${suffix}`;
+  }, [currentNightStage, currentNightStageMeta, nightStageItems.length]);
   const witchHealBlockedBySelfSave =
     currentNightStage === "witchHeal" &&
     isFirstNight &&
@@ -853,14 +884,16 @@ export default function GMPanel() {
     return (
       <div
         key={player.seat}
-        className={`card border transition ${player.alive ? "border-gray-200" : "border-red-200 bg-red-50/60"} ${
-          isExpanded ? "space-y-2" : "px-3 py-2"
+        className={`rounded-2xl border bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition xl:rounded-[28px] ${
+          player.alive ? "border-gray-200" : "border-red-200 bg-red-50/60"
+        } ${
+          isExpanded ? "col-span-full space-y-2 p-3 sm:p-4 xl:p-4" : "p-2 sm:p-3 xl:p-4"
         }`}
       >
-        <div className={`flex flex-col gap-2 sm:flex-row sm:gap-3 ${isExpanded ? "sm:items-start sm:justify-between" : "sm:items-start sm:justify-between"}`}>
+        <div className={`flex flex-col gap-2 xl:flex-row xl:gap-3 ${isExpanded ? "xl:items-start xl:justify-between" : "xl:items-start xl:justify-between"}`}>
           <button
             type="button"
-            className={`flex min-w-0 flex-1 gap-3 text-left ${isExpanded ? "items-start" : "items-start py-0.5"}`}
+            className={`flex min-w-0 flex-1 gap-2 text-left sm:gap-3 ${isExpanded ? "items-start" : "items-start py-0.5"}`}
             onClick={() => {
               if (inNight && currentNightStage === "witchHeal") {
                 setNote("女巫救人阶段不需要手动选目标，系统会自动指向今夜中刀者。");
@@ -874,33 +907,41 @@ export default function GMPanel() {
               if (!inNight) toggleExpandedSeat(player.seat);
             }}
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-700 sm:h-8 sm:w-8 sm:text-sm xl:h-9 xl:w-9">
               {player.seat}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="break-all text-sm font-semibold leading-5 text-gray-900">{player.nickname}</span>
-                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${roleMeta.accent}`}>
-                  {roleMeta.label}
-                </span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                    player.alive
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-red-200 bg-red-50 text-red-700"
-                  }`}
-                >
-                  {player.alive ? "存活" : "出局"}
-                </span>
-                {currentSpeakerSeat === player.seat && <span className="badge bg-amber-100 text-amber-700">发言中</span>}
+              <div className="space-y-1">
+                <div className="break-words text-[12px] font-semibold leading-4 text-gray-900 sm:text-[13px] xl:text-sm xl:leading-5">
+                  {player.nickname}
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-[11px] ${roleMeta.accent}`}>
+                    {roleMeta.label}
+                  </span>
+                  <span
+                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-[11px] ${
+                      player.alive
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-red-200 bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {player.alive ? "存活" : "出局"}
+                  </span>
+                  {currentSpeakerSeat === player.seat && (
+                    <span className="badge border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 sm:px-2 sm:text-[11px]">
+                      发言中
+                    </span>
+                  )}
+                </div>
+                {isCurrentTarget && (
+                  <div className="text-[10px] font-medium text-emerald-700 sm:text-xs">当前选中</div>
+                )}
               </div>
-              {isCurrentTarget && (
-                <div className="mt-1 text-xs font-medium text-emerald-700">当前选中</div>
-              )}
             </div>
           </button>
 
-          <div className="flex shrink-0 items-center gap-1.5 self-end sm:self-auto">
+          <div className="hidden shrink-0 items-center gap-1.5 self-end sm:flex xl:self-auto">
             {!inNight && (
               <button
                 className="rounded-lg border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium shadow-sm transition hover:bg-gray-100"
@@ -943,36 +984,7 @@ export default function GMPanel() {
 
   const renderNightPanel = () => (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {[
-          ["guard", "守卫守护", nightPlan.guard.completed],
-          ["wolves", "狼人袭击", nightPlan.wolves.completed],
-          ["seer", "预言家查验", nightPlan.seer.completed],
-          ["witchHeal", "女巫救人", nightPlan.witch.healDone],
-          ["witchPoison", "女巫毒人", nightPlan.witch.poisonDone],
-        ]
-          .filter(([stageKey]) => nightStageAvailability[stageKey])
-          .map(([stageKey, label, completed], index) => {
-            const active = currentNightStage === stageKey;
-            return (
-              <div
-                key={stageKey}
-                className={`rounded-2xl border px-4 py-3 text-sm ${
-                  completed
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : active
-                    ? "border-black bg-black text-white"
-                    : "border-gray-200 bg-gray-50 text-gray-500"
-                }`}
-              >
-                <div className="text-xs uppercase tracking-[0.18em] opacity-70">Step {index + 1}</div>
-                <div className="mt-1 font-medium">{label}</div>
-              </div>
-            );
-          })}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mx-auto grid max-w-3xl grid-cols-3 gap-2 sm:gap-3">
         <button
           className={getNightActionButtonClass(currentNightStage === "guard")}
           onMouseEnter={() => explainGuard(parsedTargetSeat)}
@@ -1037,7 +1049,7 @@ export default function GMPanel() {
               <div className="mt-1 text-3xl font-semibold text-gray-900">{formatSeconds(nightStageRemaining)}</div>
               <div className="mt-1 text-xs text-gray-500">
                 {currentNightStage && currentNightStage !== "done"
-                  ? `${nightStageLabel(currentNightStage)}默认 ${getNightStageDuration(currentNightStage, isFirstNight)} 秒`
+                  ? `${currentNightStageMeta?.label ?? nightStageLabel(currentNightStage)}默认 ${getNightStageDuration(currentNightStage, isFirstNight)} 秒`
                   : "夜晚流程结束"}
               </div>
             </div>
@@ -1074,26 +1086,6 @@ export default function GMPanel() {
             <div>预言家：{nightPlan.seer.completed ? `${nightPlan.seer.targetSeat} 号` : "未执行"}</div>
             <div>女巫救：{nightPlan.witch.healDone ? nightPlan.witch.healTargetSeat ? `${nightPlan.witch.healTargetSeat} 号` : "不救" : "未执行"}</div>
             <div>女巫毒：{nightPlan.witch.poisonDone ? nightPlan.witch.poisonTargetSeat ? `${nightPlan.witch.poisonTargetSeat} 号` : "不毒" : "未执行"}</div>
-          </div>
-        </div>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <div className="mb-3 text-sm font-medium text-gray-700">夜晚提示</div>
-          <div className="space-y-2 text-sm text-gray-600">
-            <div>夜晚动作必须按顺序执行，不能跳过或重复。</div>
-            <div>除女巫救人外，所有动作都必须先从两侧玩家卡手动选中目标。</div>
-            <div>如需重来，只能使用“清空本夜动作”恢复整套顺序。</div>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <div className="mb-3 text-sm font-medium text-gray-700">默认时长</div>
-          <div className="space-y-2 text-sm text-gray-600">
-            <div>守卫：10 秒</div>
-            <div>狼人：{isFirstNight ? "75 秒（首夜）" : "60 秒"}</div>
-            <div>预言家：8 秒</div>
-            <div>女巫救人：10 秒</div>
-            <div>女巫毒人：10 秒</div>
           </div>
         </div>
       </div>
@@ -1155,13 +1147,13 @@ export default function GMPanel() {
             </button>
           </div>
           <div className="text-sm text-gray-600">顺序：{speechOrder.length ? speechOrder.join(" -> ") : "暂未安排"}</div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             {currentSpeakerSeat != null && (
-              <button className="btn-secondary" onClick={() => removeSpeaker(currentSpeakerSeat)}>
+              <button className="btn-secondary w-full sm:w-auto" onClick={() => removeSpeaker(currentSpeakerSeat)}>
                 移除当前发言人
               </button>
             )}
-            <button className="btn-secondary" onClick={resetSpeechRound}>
+            <button className="btn-secondary w-full sm:w-auto" onClick={resetSpeechRound}>
               重置本轮
             </button>
           </div>
@@ -1194,17 +1186,17 @@ export default function GMPanel() {
               onChange={(e) => setSpeechLimitSec(Number(e.target.value) || 180)}
             />
           </label>
-          <div className="flex flex-wrap gap-2 self-end">
-            <button className="btn-primary" onClick={startSpeechTimer} disabled={speechRunning || currentSpeakerSeat == null}>
+          <div className="flex flex-col gap-2 self-end sm:flex-row sm:flex-wrap">
+            <button className="btn-primary w-full sm:w-auto" onClick={startSpeechTimer} disabled={speechRunning || currentSpeakerSeat == null}>
               开始计时
             </button>
-            <button className="btn-secondary" onClick={pauseSpeechTimer} disabled={!speechRunning}>
+            <button className="btn-secondary w-full sm:w-auto" onClick={pauseSpeechTimer} disabled={!speechRunning}>
               暂停
             </button>
-            <button className="btn-secondary" onClick={() => finishSpeaker(true)} disabled={currentSpeakerSeat == null}>
+            <button className="btn-secondary w-full sm:w-auto" onClick={() => finishSpeaker(true)} disabled={currentSpeakerSeat == null}>
               结束并下一位
             </button>
-            <button className="btn-secondary" onClick={() => finishSpeaker(false)} disabled={currentSpeakerSeat == null}>
+            <button className="btn-secondary w-full sm:w-auto" onClick={() => finishSpeaker(false)} disabled={currentSpeakerSeat == null}>
               结束不切换
             </button>
           </div>
@@ -1232,11 +1224,11 @@ export default function GMPanel() {
             {parsedTargetSeat ?? "未选择"}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 self-end">
-          <button className="btn-primary" onClick={recordVote}>
+        <div className="flex flex-col gap-2 self-end sm:flex-row sm:flex-wrap">
+          <button className="btn-primary w-full sm:w-auto" onClick={recordVote}>
             记录投票
           </button>
-          <button className="btn-secondary" onClick={clearVotes}>
+          <button className="btn-secondary w-full sm:w-auto" onClick={clearVotes}>
             清空投票
           </button>
         </div>
@@ -1273,26 +1265,34 @@ export default function GMPanel() {
 
   return (
     <div className="space-y-4 xl:grid xl:grid-cols-[minmax(280px,1.08fr)_minmax(520px,1.34fr)_minmax(280px,1.08fr)] xl:gap-4 xl:space-y-0 2xl:grid-cols-[minmax(300px,1.12fr)_minmax(580px,1.4fr)_minmax(300px,1.12fr)]">
-      <div className="order-2 grid gap-3 sm:grid-cols-2 xl:order-1 xl:block xl:space-y-4">{leftPlayers.map(renderPlayerCard)}</div>
+      <div className="order-2 xl:hidden">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">玩家列表</h3>
+          <div className="text-xs text-gray-400">按座位顺序</div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4">{mobilePlayers.map(renderPlayerCard)}</div>
+      </div>
+
+      <div className="hidden xl:block xl:order-1 xl:space-y-4">{leftPlayers.map(renderPlayerCard)}</div>
 
       <div className="card order-1 space-y-5 xl:order-2">
-        <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="panel-divider flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-gray-900">主持面板</h2>
-            <div className="mt-1 text-sm text-gray-500">
+            <h2 className="page-title text-2xl">主持面板</h2>
+            <div className="mt-1 text-sm text-slate-500">
               当前阶段：{phaseLabel(room.status)} | 存活 {alivePlayers.length} / {sortedPlayers.length}
             </div>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-row lg:flex-wrap lg:items-center">
+            <div className="stat-tile py-2">
               当前目标：{parsedTargetSeat ?? "未选择"}
             </div>
             {inNight && (
               <>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                  当前夜晚流程：{nightStageLabel(currentNightStage)}
+                <div className="stat-tile py-2 sm:min-w-[220px]">
+                  {currentNightStageStatusLine}
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                <div className="stat-tile py-2">
                   {isFirstNight ? "首夜" : `第 ${currentNightNumber} 夜`}
                 </div>
               </>
@@ -1304,13 +1304,13 @@ export default function GMPanel() {
         {inDay && renderDayPanel()}
         {inVote && renderVotePanel()}
         {!inNight && !inDay && !inVote && (
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">
+          <div className="info-box--muted">
             当前阶段没有专用主持工具，可以直接刷新或推进阶段。
           </div>
         )}
 
         <div
-          className={`rounded-2xl border px-4 py-4 ${
+          className={`info-box ${
             inNight ? "border-amber-200 bg-amber-50 text-amber-950" : "border-blue-200 bg-blue-50 text-blue-950"
           }`}
         >
@@ -1319,8 +1319,8 @@ export default function GMPanel() {
         </div>
 
         <div
-          className={`rounded-2xl border px-4 py-3 ${
-            error ? "border-red-200 bg-red-50 text-red-700" : "border-gray-200 bg-gray-50 text-gray-700"
+          className={`info-box ${
+            error ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-slate-50 text-slate-700"
           }`}
         >
           <div className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">主持提示</div>
@@ -1328,19 +1328,19 @@ export default function GMPanel() {
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-          <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-            <div className="font-medium text-gray-900">当前信息</div>
+          <div className="info-box--muted space-y-2">
+            <div className="font-medium text-slate-900">当前信息</div>
             {summary && (
-              <div className="text-gray-600">
+              <div className="text-slate-600">
                 最近结算：死亡 {summary.killed?.length ? summary.killed.join("、") : "无"}；幸存 {summary.survived?.length ? summary.survived.join("、") : "无"}
               </div>
             )}
             {currentSpeakerSeat != null && (
-              <div className={speechElapsed > speechLimitSec ? "text-red-600" : "text-gray-600"}>
+              <div className={speechElapsed > speechLimitSec ? "text-red-600" : "text-slate-600"}>
                 当前发言人：{currentSpeakerSeat} 号，已计时 {formatSeconds(speechElapsed)}
               </div>
             )}
-            {!summary && currentSpeakerSeat == null && <div className="text-gray-500">从左右玩家卡选择目标，或在中央面板继续记录流程。</div>}
+            {!summary && currentSpeakerSeat == null && <div className="text-slate-500">从左右玩家卡选择目标，或在中央面板继续记录流程。</div>}
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end">
@@ -1360,7 +1360,7 @@ export default function GMPanel() {
 
       </div>
 
-      <div className="order-3 grid gap-3 sm:grid-cols-2 xl:order-3 xl:block xl:space-y-4">{rightPlayers.map(renderPlayerCard)}</div>
+      <div className="hidden xl:block xl:order-3 xl:space-y-4">{rightPlayers.map(renderPlayerCard)}</div>
     </div>
   );
 }

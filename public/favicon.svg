@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="GodsBooklet">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#334155" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)" />
+  <path d="M20 16h15c7.18 0 13 5.82 13 13v19H33c-7.18 0-13-5.82-13-13V16z" fill="#f8fafc" />
+  <path d="M29 22h10c4.97 0 9 4.03 9 9v11h-9c-5.52 0-10-4.48-10-10V22z" fill="#cbd5e1" />
+</svg>

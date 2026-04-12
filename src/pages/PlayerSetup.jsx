@@ -1,22 +1,22 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { addPlayer, getRoom } from "../api/rooms";
 import useRoomStore from "../store/roomStore";
 
-export default function PlayerSetup({ onNext }) {
+export default function PlayerSetup({ onNext, t }) {
   const { room, setRoom } = useRoomStore();
   const [seat, setSeat] = useState(1);
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  if (!room?._id) return <div className="card">请先创建房间</div>;
+  if (!room?._id) return <div className="card">{t("common.roomIdEmpty")}</div>;
 
   const players = room.players || [];
   const requiredPlayers = Number.isInteger(room.playerCount) ? room.playerCount : room.meta?.expectedPlayers ?? 0;
   const blockers = [];
 
   if (players.length !== requiredPlayers) {
-    blockers.push(`当前玩家数为 ${players.length}，必须精确等于预设人数 ${requiredPlayers} 才能进入发牌。`);
+    blockers.push(t("playerSetup.blockers.exactCount", { current: players.length, required: requiredPlayers }));
   }
   if (Array.isArray(room.meta?.readyIssues)) {
     blockers.push(...room.meta.readyIssues);
@@ -26,13 +26,17 @@ export default function PlayerSetup({ onNext }) {
   const canProceed = uniqueBlockers.length === 0;
 
   const add = async () => {
-    setLoading(true); setError("");
+    setLoading(true);
+    setError("");
     try {
       const updated = await addPlayer(room._id, { seat: Number(seat), nickname });
       setRoom(updated);
       setNickname("");
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const refresh = async () => {
@@ -41,55 +45,85 @@ export default function PlayerSetup({ onNext }) {
   };
 
   return (
-    <div className="card space-y-4">
-      <h2 className="text-xl font-semibold">玩家设置</h2>
-      <div className="text-sm text-gray-600">
-        目标人数：<b>{requiredPlayers}</b> · 当前人数：<b>{players.length}</b>
-      </div>
+    <div className="page-stack">
+      <section className="surface-panel surface-panel--dense">
+        <div className="section-kicker">Step 2</div>
+        <h2 className="mt-2 section-title sm:text-2xl">{t?.("page.playerSetupTitle") ?? "玩家设置"}</h2>
+        <p className="mt-2 page-copy">{t?.("page.playerSetupBody") ?? "补齐玩家人数、座位和昵称后，才能进入发牌。"}</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="stat-tile">
+            <div className="stat-label">{t("playerSetup.stats.targetPlayers")}</div>
+            <div className="mt-1 text-lg font-semibold text-slate-950">{requiredPlayers}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">{t("playerSetup.stats.currentPlayers")}</div>
+            <div className="mt-1 text-lg font-semibold text-slate-950">{players.length}</div>
+          </div>
+          <div className="stat-tile">
+            <div className="stat-label">{t("playerSetup.stats.progressState")}</div>
+            <div className={`mt-1 text-sm font-semibold ${canProceed ? "text-emerald-700" : "text-amber-700"}`}>{canProceed ? t("playerSetup.states.ready") : t("playerSetup.states.blocked")}</div>
+          </div>
+        </div>
+      </section>
 
       <div>
-        <button className="btn-primary w-full sm:w-auto" onClick={onNext} disabled={!canProceed}>继续到发牌</button>
+        <button className="btn-primary w-full justify-center sm:w-auto" onClick={onNext} disabled={!canProceed}>{t("playerSetup.actions.continue")}</button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="label">座位号</label>
-          <input className="input" type="number" min={1} value={seat} onChange={(e) => setSeat(e.target.value)} />
+      <section className="card space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div>
+            <label className="label">{t("playerSetup.fields.seat")}</label>
+            <input className="input" type="number" min={1} value={seat} onChange={(e) => setSeat(e.target.value)} />
+          </div>
+          <div className="md:col-span-2">
+            <label className="label">{t("playerSetup.fields.nickname")}</label>
+            <input className="input" value={nickname} onChange={(e) => setNickname(e.target.value)} />
+          </div>
         </div>
-        <div className="md:col-span-2">
-          <label className="label">昵称</label>
-          <input className="input" value={nickname} onChange={(e) => setNickname(e.target.value)} />
-        </div>
-      </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <button className="btn-primary w-full sm:w-auto" onClick={add} disabled={loading || !nickname}>{loading ? "添加中..." : "添加玩家"}</button>
-        <button className="btn-secondary w-full sm:w-auto" onClick={refresh}>刷新</button>
-        {error && <span className="text-red-600 text-sm">{error}</span>}
-      </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <button className="btn-primary w-full justify-center sm:w-auto" onClick={add} disabled={loading || !nickname}>
+            {loading ? t("playerSetup.actions.adding") : t("playerSetup.actions.add")}
+          </button>
+          <button className="btn-secondary w-full justify-center sm:w-auto" onClick={refresh}>{t("common.refresh")}</button>
+          {error && <span className="text-sm text-red-600">{error}</span>}
+        </div>
+      </section>
 
       {!canProceed && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 space-y-1">
+        <div className="notice-banner space-y-1">
           {uniqueBlockers.map((item) => (
             <div key={item}>- {item}</div>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
-        {[...players].sort((a,b)=>a.seat-b.seat).map(p => (
-          <div key={p.seat} className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="font-medium">{p.nickname}</div>
-              <div className="text-sm text-gray-500">座位 {p.seat} · {p.alive ? <span className="badge">存活</span> : <span className="badge">死亡</span>}</div>
+      <section className="card">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold text-slate-950">{t("playerSetup.list.title")}</h3>
+          <div className="text-xs text-slate-400">{t("playerSetup.list.sortHint")}</div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {[...players].sort((a, b) => a.seat - b.seat).map((p) => (
+            <div key={p.seat} className="stat-tile bg-white">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="break-words text-sm font-semibold text-slate-950">{p.nickname}</div>
+                  <div className="mt-1 text-xs text-slate-500">{t("common.seatValue", { seat: p.seat })}</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="badge">{p.role || t("common.unassigned")}</span>
+                  <span className="badge">{p.alive ? t("common.alive") : t("common.dead")}</span>
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-gray-400 sm:text-right">{p.role || "未分配"}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </section>
 
       <div>
-        <button className="btn-primary w-full sm:w-auto" onClick={onNext} disabled={!canProceed}>继续到发牌</button>
+        <button className="btn-primary w-full justify-center sm:w-auto" onClick={onNext} disabled={!canProceed}>{t("playerSetup.actions.continue")}</button>
       </div>
     </div>
   );
