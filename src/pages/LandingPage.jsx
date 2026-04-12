@@ -6,6 +6,7 @@ export default function LandingPage({ t, locale, setLocale, onOpenApp }) {
   const flow = t("landing.flow");
   const featureLead = features.slice(0, 3);
   const featureTail = features.slice(3);
+  const updates = t("landing.updates.items");
 
   return (
     <div className="page-shell font-brand-serif">
@@ -148,6 +149,32 @@ export default function LandingPage({ t, locale, setLocale, onOpenApp }) {
                   <div key={item} className="stat-tile bg-white/80">
                     <div className="stat-label">Step {index + 1}</div>
                     <div className="stat-value">{item}</div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
+
+          <section className="mt-6">
+            <article className="surface-panel">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="section-kicker">{t("landing.updates.title")}</div>
+                  <h2 className="section-title">{t("landing.updates.subtitle")}</h2>
+                </div>
+                <p className="max-w-xl text-sm leading-6 text-slate-600">
+                  {t("landing.updates.description")}
+                </p>
+              </div>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {updates.map((item) => (
+                  <div key={item.version} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <span>{item.version}</span>
+                    </div>
+                    <h3 className="mt-3 text-sm font-semibold text-slate-950">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
                   </div>
                 ))}
               </div>

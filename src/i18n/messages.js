@@ -59,6 +59,33 @@ export const messages = {
         "主持狼人杀最容易出问题的不是规则本身，而是流程被打断、记录丢失、信息分散。GodsBooklet 把这些操作收进一条稳定工作流，让主持时少记步骤，专注控场。",
       flowTitle: "标准流程",
       flow: ["创建房间", "玩家设置", "发牌", "主持面板", "日志与撤销"],
+      updates: {
+        title: "更新日志",
+        subtitle: "What’s New",
+        description: "快速查看最近的产品改进，让首页与主持体验保持更清爽、稳定。",
+        items: [
+          {
+            version: "v1.3",
+            title: "移动端布局优化",
+            body: "更清爽的间距与自适应布局，手机和平板上也能顺滑阅读。",
+          },
+          {
+            version: "v1.2",
+            title: "首页与应用分流",
+            body: "产品站点与主应用已分离，入口更简洁，体验更沉稳。",
+          },
+          {
+            version: "v1.1",
+            title: "语言支持进展",
+            body: "内置语言切换已打磨完毕，后续本地化更新可无缝推进。",
+          },
+          {
+            version: "v1.0",
+            title: "主持流程优化",
+            body: "改进主持控制和房间状态展示，让开局更顺畅、复盘更清晰。",
+          },
+        ],
+      },
     },
     tool: {
       title: "GodsBooklet",
@@ -497,6 +524,33 @@ export const messages = {
         "Most moderation mistakes do not come from the rules themselves. They come from broken flow, scattered notes, and missed updates. GodsBooklet keeps the process structured so the moderator can focus on the room instead of the bookkeeping.",
       flowTitle: "Standard flow",
       flow: ["Create room", "Player setup", "Assign roles", "GM panel", "Logs & undo"],
+      updates: {
+        title: "更新日志",
+        subtitle: "What’s New",
+        description: "A quick view of recent product updates that keep the homepage and moderator experience polished.",
+        items: [
+          {
+            version: "v1.3",
+            title: "Mobile layout refinements",
+            body: "Cleaner spacing and a responsive homepage that scales smoothly for phones and tablets.",
+          },
+          {
+            version: "v1.2",
+            title: "Landing + app route separation",
+            body: "The product site and main game app now live as distinct flows for a calmer entry experience.",
+          },
+          {
+            version: "v1.1",
+            title: "Language support progress",
+            body: "Built-in language switching is now polished and ready for continued localization updates.",
+          },
+          {
+            version: "v1.0",
+            title: "Moderator flow optimization",
+            body: "Improved moderator controls and room state displays for faster game setup and review.",
+          },
+        ],
+      },
     },
     tool: {
       title: "GodsBooklet",
