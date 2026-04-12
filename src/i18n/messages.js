@@ -2,11 +2,11 @@ export const messages = {
   "zh-CN": {
     brand: {
       name: "GodsBooklet",
-      tagline: "移动优先的狼人杀主持工具",
+      tagline: "移动优先的狼人杀主持应用",
     },
     common: {
       backToHome: "返回首页",
-      openApp: "打开主持工具",
+      openApp: "打开应用",
       roomIdEmpty: "请先创建房间",
       roomIdValue: "房间ID：{id}",
       languageLabel: "语言",
@@ -15,7 +15,7 @@ export const messages = {
         en: "EN",
       },
       notFoundTitle: "页面不存在",
-      notFoundBody: "这个地址没有对应内容，请返回首页或直接进入主持工具。",
+      notFoundBody: "这个地址没有对应内容，请返回首页或直接进入应用。",
       refresh: "刷新",
       undo: "撤销",
       system: "system",
@@ -30,7 +30,7 @@ export const messages = {
       title: "把一局狼人杀的主持流程收进同一个操作界面。",
       body:
         "GodsBooklet 为线下主持人整理开房、玩家管理、发牌、夜晚结算、日志和撤销，让流程更清楚，现场更稳。",
-      primaryCta: "打开主持工具",
+      primaryCta: "打开应用",
       secondaryCta: "查看工作流",
       features: [
         {
@@ -61,7 +61,7 @@ export const messages = {
       flow: ["创建房间", "玩家设置", "发牌", "主持面板", "日志与撤销"],
     },
     tool: {
-      title: "GodsBooklet 主持工具",
+      title: "GodsBooklet",
       subtitle: "房间状态与流程推进",
       headerExpand: "展开",
       headerCollapse: "收起",
@@ -440,7 +440,7 @@ export const messages = {
   en: {
     brand: {
       name: "GodsBooklet",
-      tagline: "Mobile-first Werewolf GM toolkit",
+      tagline: "Mobile-first Werewolf moderator app",
     },
     common: {
       backToHome: "Back to home",
@@ -468,7 +468,7 @@ export const messages = {
       title: "Run a live Werewolf session from one clear operating surface.",
       body:
         "GodsBooklet helps moderators handle room setup, player management, role assignment, night resolution, logs, and undo without losing track of the table.",
-      primaryCta: "Open moderator tool",
+      primaryCta: "Open app",
       secondaryCta: "View workflow",
       features: [
         {
@@ -499,7 +499,7 @@ export const messages = {
       flow: ["Create room", "Player setup", "Assign roles", "GM panel", "Logs & undo"],
     },
     tool: {
-      title: "GodsBooklet GM Tool",
+      title: "GodsBooklet",
       subtitle: "Room status and flow control",
       headerExpand: "Expand",
       headerCollapse: "Collapse",
