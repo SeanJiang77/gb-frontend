@@ -118,7 +118,6 @@ function buildHostScript({
   currentSpeakerSeat,
   wolvesVictimSeat,
   witchHealBlockedBySelfSave,
-  seerSeat,
   isFirstNight,
   currentNightNumber,
   currentSpeakerElapsed,
@@ -133,9 +132,7 @@ function buildHostScript({
       return "请狼人睁眼。今夜你们要袭击的是几号？请统一手势。";
     }
     if (currentNightStage === "seer") {
-      return seerSeat != null
-        ? `请预言家睁眼。除了 ${seerSeat} 号自己以外，你要查验几号？请用手势示意。`
-        : "请预言家睁眼。你要查验几号？请用手势示意。";
+      return "请预言家睁眼。你要查验几号？请用手势示意。";
     }
     if (currentNightStage === "witchHeal") {
       if (wolvesVictimSeat == null) {
@@ -249,7 +246,13 @@ export default function GMPanel() {
   const leftPlayers = sortedPlayers.slice(0, midPoint);
   const rightPlayers = sortedPlayers.slice(midPoint);
   const currentSpeakerSeat = speechOrder[speechIndex] ?? null;
-  const lastKilledSeat = room.meta?.lastKilledSeat ?? null;
+  const lastKilledSeats = Array.isArray(room.meta?.lastKilledSeats)
+    ? room.meta.lastKilledSeats
+    : Number.isInteger(room.meta?.lastKilledSeat)
+    ? [room.meta.lastKilledSeat]
+    : [];
+  const lastKilledSeat = lastKilledSeats.length ? [...lastKilledSeats].sort((a, b) => a - b)[0] : null;
+  const lastKilledLabel = lastKilledSeats.length ? [...lastKilledSeats].sort((a, b) => a - b).join("、") : null;
   const resolvedNightCount = useMemo(
     () => (room.log || []).filter((entry) => entry?.payload?.action === "nightSummary").length,
     [room.log]
@@ -327,7 +330,6 @@ export default function GMPanel() {
         currentSpeakerSeat,
         wolvesVictimSeat,
         witchHealBlockedBySelfSave,
-        seerSeat,
         isFirstNight,
         currentNightNumber,
         currentSpeakerElapsed: speechElapsed,
@@ -338,7 +340,6 @@ export default function GMPanel() {
       currentSpeakerSeat,
       wolvesVictimSeat,
       witchHealBlockedBySelfSave,
-      seerSeat,
       isFirstNight,
       currentNightNumber,
       speechElapsed,
@@ -510,7 +511,7 @@ export default function GMPanel() {
       return;
     }
     if (currentNightStage === "seer") {
-      setNote(seerSeat != null ? `请指定预言家要查验的目标，${seerSeat} 号不能查验自己。` : "请指定预言家要查验的目标。");
+      setNote("请指定预言家要查验的目标；不能查验自己。");
       return;
     }
     if (currentNightStage === "witchHeal") {
@@ -576,6 +577,15 @@ export default function GMPanel() {
     setNote(`已记录：守卫守护 ${seat} 号`);
   };
 
+  const skipGuard = () => {
+    if (!ensureNightStage("guard")) return;
+
+    setSummary(null);
+    setNightPlan((prev) => ({ ...prev, guard: { targetSeat: null, completed: true } }));
+    setTargetSeat("");
+    setNote("已记录：守卫本夜空守");
+  };
+
   const queueWolves = () => {
     if (!ensureNightStage("wolves")) return;
     const seat = requireTargetSeat("袭击");
@@ -592,6 +602,22 @@ export default function GMPanel() {
     }));
     setTargetSeat("");
     setNote(`已记录：狼人袭击 ${seat} 号`);
+  };
+
+  const skipWolves = () => {
+    if (!ensureNightStage("wolves")) return;
+
+    setSummary(null);
+    setNightPlan((prev) => ({
+      ...prev,
+      wolves: { targetSeat: null, completed: true },
+      witch: {
+        ...prev.witch,
+        healTargetSeat: null,
+      },
+    }));
+    setTargetSeat("");
+    setNote("已记录：狼人本夜空刀");
   };
 
   const queueSeer = () => {
@@ -764,7 +790,7 @@ export default function GMPanel() {
     }
 
     const sheriffAlive = sheriffSeat != null && aliveSeats.includes(sheriffSeat);
-    const hasNightDeath = Number.isInteger(lastKilledSeat) && !aliveSeats.includes(lastKilledSeat);
+    const hasNightDeath = lastKilledSeats.length > 0;
 
     let anchorSeat = null;
     let direction = "right";
@@ -774,12 +800,12 @@ export default function GMPanel() {
       direction = directionOverride ?? "right";
       anchorSeat = hasNightDeath ? lastKilledSeat : sheriffSeat;
       ruleLabel = hasNightDeath
-        ? `警长指定从${anchorSeat}号${direction === "left" ? "左侧" : "右侧"}开始发言`
+        ? `昨夜死亡 ${lastKilledLabel} 号，警长指定从${anchorSeat}号${direction === "left" ? "左侧" : "右侧"}开始发言`
         : `平安夜由警长指定从${sheriffSeat}号${direction === "left" ? "左侧" : "右侧"}开始发言`;
     } else if (hasNightDeath) {
       direction = "right";
       anchorSeat = lastKilledSeat;
-      ruleLabel = `昨夜死亡 ${anchorSeat} 号，从死者右侧开始顺序发言`;
+      ruleLabel = `昨夜死亡 ${lastKilledLabel} 号，从 ${anchorSeat} 号右侧开始顺序发言`;
     } else {
       direction = "right";
       anchorSeat = 0;
@@ -816,6 +842,8 @@ export default function GMPanel() {
 
     const finishedSeat = currentSpeakerSeat;
     const elapsed = speechElapsed;
+    const nextIndex = speechIndex + 1;
+    const hasNextSpeaker = moveNext && nextIndex < speechOrder.length;
 
     setSpeechTotals((prev) => ({
       ...prev,
@@ -823,8 +851,11 @@ export default function GMPanel() {
     }));
     setSpeechRunning(false);
     setSpeechElapsed(0);
-    if (moveNext) {
-      setSpeechIndex((prev) => Math.min(prev + 1, Math.max(speechOrder.length - 1, 0)));
+    if (hasNextSpeaker) {
+      setSpeechIndex(nextIndex);
+    } else {
+      setSpeechIndex(speechOrder.length);
+      setExpandedSeats([]);
     }
     setNote(`已记录 ${finishedSeat} 号发言 ${formatSeconds(elapsed)}`);
   };
@@ -835,6 +866,7 @@ export default function GMPanel() {
     setSpeechRunning(false);
     setSpeechElapsed(0);
     setSpeechTotals({});
+    setExpandedSeats([]);
     setNote("已清空发言顺序与计时");
   };
 
@@ -1231,12 +1263,26 @@ export default function GMPanel() {
           守卫守护
         </button>
         <button
+          className={getNightActionButtonClass(currentNightStage === "guard")}
+          onClick={skipGuard}
+          disabled={loading || currentNightStage !== "guard"}
+        >
+          守卫空守
+        </button>
+        <button
           className={getNightActionButtonClass(currentNightStage === "wolves")}
           onMouseEnter={() => explainWolf(parsedTargetSeat)}
           onClick={queueWolves}
           disabled={loading || currentNightStage !== "wolves"}
         >
           狼人袭击
+        </button>
+        <button
+          className={getNightActionButtonClass(currentNightStage === "wolves")}
+          onClick={skipWolves}
+          disabled={loading || currentNightStage !== "wolves"}
+        >
+          狼人空刀
         </button>
         <button
           className={getNightActionButtonClass(currentNightStage === "seer")}
@@ -1318,8 +1364,8 @@ export default function GMPanel() {
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
           <div className="mb-3 text-sm font-medium text-gray-700">本夜已记录</div>
           <div className="space-y-2 text-sm text-gray-600">
-            <div>守卫：{nightPlan.guard.completed ? `${nightPlan.guard.targetSeat} 号` : "未执行"}</div>
-            <div>狼人：{nightPlan.wolves.completed ? `${nightPlan.wolves.targetSeat} 号` : "未执行"}</div>
+            <div>守卫：{nightPlan.guard.completed ? nightPlan.guard.targetSeat ? `${nightPlan.guard.targetSeat} 号` : "空守" : "未执行"}</div>
+            <div>狼人：{nightPlan.wolves.completed ? nightPlan.wolves.targetSeat ? `${nightPlan.wolves.targetSeat} 号` : "空刀" : "未执行"}</div>
             <div>预言家：{nightPlan.seer.completed ? `${nightPlan.seer.targetSeat} 号` : "未执行"}</div>
             <div>女巫救：{nightPlan.witch.healDone ? nightPlan.witch.healTargetSeat ? `${nightPlan.witch.healTargetSeat} 号` : "不救" : "未执行"}</div>
             <div>女巫毒：{nightPlan.witch.poisonDone ? nightPlan.witch.poisonTargetSeat ? `${nightPlan.witch.poisonTargetSeat} 号` : "不毒" : "未执行"}</div>
@@ -1483,11 +1529,11 @@ export default function GMPanel() {
           </div>
           <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
             {sheriffSeat != null
-              ? lastKilledSeat != null
-                ? `昨夜死亡 ${lastKilledSeat} 号，由警长决定从死者左侧或右侧开始。`
+              ? lastKilledSeats.length > 0
+                ? `昨夜死亡 ${lastKilledLabel} 号，由警长决定从参考死者 ${lastKilledSeat} 号左侧或右侧开始。`
                 : `平安夜，由警长决定从警长 ${sheriffSeat} 号左侧或右侧开始。`
-              : lastKilledSeat != null
-              ? `昨夜死亡 ${lastKilledSeat} 号，默认从死者右侧开始。`
+              : lastKilledSeats.length > 0
+              ? `昨夜死亡 ${lastKilledLabel} 号，默认从参考死者 ${lastKilledSeat} 号右侧开始。`
               : "平安夜且无警长，默认从 1 号位方向顺序开始。"}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
