@@ -1,7 +1,8 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { fastNight, getRoom, step } from "../api/rooms";
+import { fastNight, getRoom, resolveVote, step, transferSheriff } from "../api/rooms";
 import useRoomStore from "../store/roomStore";
 import { ROLES } from "../constants/roles";
+import PlayerCard from "../components/gm/PlayerCard";
 
 const ROLE_META = {
   [ROLES.WEREWOLF]: { label: "狼人", accent: "bg-red-50 text-red-700 border-red-200" },
@@ -222,15 +223,23 @@ export default function GMPanel() {
   const [exileTieRound, setExileTieRound] = useState(0);
   const [exileTiedSeats, setExileTiedSeats] = useState([]);
 
-  if (!room?._id) return <div className="card">请先创建房间</div>;
-
-  const players = room.players ?? [];
-  const inNight = room.status === "night";
-  const inDay = room.status === "day";
-  const inVote = room.status === "vote";
-  const inSheriffVote = inDay && sheriffCandidates.length > 0 && sheriffSeat == null;
+  const roomId = room?._id ?? "";
+  const roomStatus = room?.status ?? "init";
+  const roomMeta = room?.meta ?? {};
+  const roomRules = room?.rules ?? {};
+  const roomLog = room?.log ?? [];
+  const players = room?.players ?? [];
+  const persistedSheriffSeat = Number.isInteger(roomMeta.sheriffSeat) ? roomMeta.sheriffSeat : null;
+  const confirmedSheriffSeat = persistedSheriffSeat ?? sheriffSeat;
+  const noSheriff = roomMeta.noSheriff === true;
+  const sheriffElectionCompleted = roomMeta.sheriffElectionCompleted === true;
+  const inNight = roomStatus === "night";
+  const inDay = roomStatus === "day";
+  const inVote = roomStatus === "vote";
+  const inSheriffVote = inDay && sheriffCandidates.length > 0 && confirmedSheriffSeat == null && !noSheriff;
   const parsedTargetSeat = parseSeatValue(targetSeat);
   const parsedVoterSeat = parseSeatValue(voterSeat);
+  const voteState = roomMeta.voteState || null;
 
   const sortedPlayers = useMemo(() => [...players].sort((a, b) => a.seat - b.seat), [players]);
   const alivePlayers = useMemo(() => sortedPlayers.filter((player) => player.alive), [sortedPlayers]);
@@ -239,23 +248,26 @@ export default function GMPanel() {
     [sortedPlayers]
   );
 
-  const sheriffIsDead = sheriffSeat != null && !playerBySeat.get(sheriffSeat)?.alive;
+  const sheriffIsDead =
+    roomMeta.sheriffTransferRequired === true ||
+    (confirmedSheriffSeat != null && !playerBySeat.get(confirmedSheriffSeat)?.alive);
+  const activeSheriffSeat = sheriffIsDead ? null : confirmedSheriffSeat;
 
   const midPoint = Math.ceil(sortedPlayers.length / 2);
   const mobilePlayers = sortedPlayers;
   const leftPlayers = sortedPlayers.slice(0, midPoint);
   const rightPlayers = sortedPlayers.slice(midPoint);
   const currentSpeakerSeat = speechOrder[speechIndex] ?? null;
-  const lastKilledSeats = Array.isArray(room.meta?.lastKilledSeats)
-    ? room.meta.lastKilledSeats
-    : Number.isInteger(room.meta?.lastKilledSeat)
-    ? [room.meta.lastKilledSeat]
+  const lastKilledSeats = Array.isArray(roomMeta.lastKilledSeats)
+    ? roomMeta.lastKilledSeats
+    : Number.isInteger(roomMeta.lastKilledSeat)
+    ? [roomMeta.lastKilledSeat]
     : [];
   const lastKilledSeat = lastKilledSeats.length ? [...lastKilledSeats].sort((a, b) => a - b)[0] : null;
   const lastKilledLabel = lastKilledSeats.length ? [...lastKilledSeats].sort((a, b) => a - b).join("、") : null;
   const resolvedNightCount = useMemo(
-    () => (room.log || []).filter((entry) => entry?.payload?.action === "nightSummary").length,
-    [room.log]
+    () => roomLog.filter((entry) => entry?.payload?.action === "nightSummary").length,
+    [roomLog]
   );
   const isFirstNight = resolvedNightCount === 0;
   const currentNightNumber = resolvedNightCount + (inNight ? 1 : 0);
@@ -268,6 +280,13 @@ export default function GMPanel() {
       .map(([seat, count]) => ({ seat: Number(seat), count }))
       .sort((a, b) => b.count - a.count || a.seat - b.seat);
   }, [voteRecords]);
+  const exileVoteTargets = useMemo(() => {
+    if (exileTieRound === 1 && exileTiedSeats.length > 0) {
+      const tied = new Set(exileTiedSeats);
+      return sortedPlayers.filter((player) => tied.has(player.seat));
+    }
+    return sortedPlayers;
+  }, [exileTieRound, exileTiedSeats, sortedPlayers]);
 
   const seatOf = (role) => sortedPlayers.find((player) => player.role === role)?.seat ?? null;
 
@@ -277,7 +296,7 @@ export default function GMPanel() {
   const witchSeat = witch?.seat ?? null;
   const seerSeat = seatOf(ROLES.SEER);
   const wolvesVictimSeat = nightPlan.wolves.targetSeat;
-  const witchSelfSaveAllowed = !!room.rules?.witchSelfSaveFirstNight;
+  const witchSelfSaveAllowed = !!roomRules.witchSelfSaveFirstNight;
   const nightStageAvailability = useMemo(
     () => ({
       guard: seatOf(ROLES.GUARD) != null,
@@ -412,7 +431,7 @@ export default function GMPanel() {
     setSheriffTiedSeats([]);
     setExileTieRound(0);
     setExileTiedSeats([]);
-  }, [room._id]);
+  }, [roomId]);
 
   useEffect(() => {
     if (!inNight) {
@@ -463,6 +482,47 @@ export default function GMPanel() {
     if (sheriffCandidates.includes(parsedTargetSeat)) return;
     setTargetSeat("");
   }, [inDay, parsedTargetSeat, sheriffCandidates, sheriffSeat]);
+
+  useEffect(() => {
+    if (!voteState) return;
+
+    if (voteState.type === "exile") {
+      const tiedSeats = Array.isArray(voteState.tiedTargetSeats) ? voteState.tiedTargetSeats : [];
+      setExileTieRound(voteState.awaitingResolution && voteState.round === 2 ? 1 : 0);
+      setExileTiedSeats(tiedSeats);
+      if (voteState.awaitingResolution && voteState.round === 2) {
+        setSpeechOrder(tiedSeats);
+        setSpeechIndex(0);
+      }
+    }
+
+    if (voteState.type === "sheriff") {
+      const tiedSeats = Array.isArray(voteState.tiedTargetSeats) ? voteState.tiedTargetSeats : [];
+      setSheriffTieRound(voteState.awaitingResolution && voteState.round === 2 ? 1 : 0);
+      setSheriffTiedSeats(tiedSeats);
+      if (voteState.awaitingResolution && voteState.round === 2) {
+        setSheriffCandidates(tiedSeats);
+      }
+      if (voteState.outcome === "sheriff-elected" && Number.isInteger(voteState.resolvedSeat)) {
+        setSheriffSeat(voteState.resolvedSeat);
+      }
+      if (voteState.outcome === "no-sheriff") {
+        setSheriffSeat(null);
+        setSheriffCandidates([]);
+      }
+    }
+  }, [voteState]);
+
+  useEffect(() => {
+    if (persistedSheriffSeat != null) {
+      setSheriffSeat(persistedSheriffSeat);
+      return;
+    }
+    if (noSheriff || sheriffElectionCompleted) {
+      setSheriffSeat(null);
+      if (noSheriff) setSheriffCandidates([]);
+    }
+  }, [noSheriff, persistedSheriffSeat, sheriffElectionCompleted]);
 
   useEffect(() => {
     if (!speechRunning) return undefined;
@@ -532,6 +592,8 @@ export default function GMPanel() {
       setNote("夜晚动作已全部记录，可以结算夜晚。");
     }
   }, [currentNightStage, inNight, seerSeat, witchHealBlockedBySelfSave, wolvesVictimSeat]);
+
+  if (!roomId) return <div className="card">请先创建房间</div>;
 
   const explainGuard = (seat) => {
     if (!seat) setNote("请选择守护目标");
@@ -744,6 +806,10 @@ export default function GMPanel() {
       await resolveCurrentNight();
       return;
     }
+    if (inVote) {
+      setNote("请先通过投票结算确认放逐结果，不能直接跳过投票阶段。");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -789,7 +855,7 @@ export default function GMPanel() {
       return;
     }
 
-    const sheriffAlive = sheriffSeat != null && aliveSeats.includes(sheriffSeat);
+    const sheriffAlive = activeSheriffSeat != null && aliveSeats.includes(activeSheriffSeat);
     const hasNightDeath = lastKilledSeats.length > 0;
 
     let anchorSeat = null;
@@ -798,10 +864,10 @@ export default function GMPanel() {
 
     if (sheriffAlive) {
       direction = directionOverride ?? "right";
-      anchorSeat = hasNightDeath ? lastKilledSeat : sheriffSeat;
+      anchorSeat = hasNightDeath ? lastKilledSeat : activeSheriffSeat;
       ruleLabel = hasNightDeath
         ? `昨夜死亡 ${lastKilledLabel} 号，警长指定从${anchorSeat}号${direction === "left" ? "左侧" : "右侧"}开始发言`
-        : `平安夜由警长指定从${sheriffSeat}号${direction === "left" ? "左侧" : "右侧"}开始发言`;
+        : `平安夜由警长指定从${activeSheriffSeat}号${direction === "left" ? "左侧" : "右侧"}开始发言`;
     } else if (hasNightDeath) {
       direction = "right";
       anchorSeat = lastKilledSeat;
@@ -883,22 +949,41 @@ export default function GMPanel() {
     setNote(`已切换 ${seat} 号的上警状态`);
   };
 
-  const electSheriff = () => {
-    const seat = requireTargetSeat("警长");
-    if (seat == null) return;
-    const player = requireAliveSeat(seat, "警长");
-    if (!player) return;
-    setSheriffSeat(seat);
-    setNote(`已设置 ${seat} 号为警长`);
-  };
-
-  const transferSheriffBadge = () => {
+  const transferSheriffBadge = async () => {
     const seat = requireTargetSeat("警徽移交对象");
     if (seat == null) return;
     const player = requireAliveSeat(seat, "警徽移交对象");
     if (!player) return;
-    setSheriffSeat(seat);
-    setNote(`已将警徽移交给 ${seat} 号`);
+
+    try {
+      setLoading(true);
+      setError("");
+      const result = await transferSheriff(room._id, { targetSeat: seat });
+      setRoom(result);
+      setTargetSeat("");
+      setVoterSeat("");
+      setNote(`已将警徽移交给 ${seat} 号`);
+    } catch (e) {
+      setError(e.message || "警徽移交失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const tearSheriffBadge = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const result = await transferSheriff(room._id, { tearBadge: true });
+      setRoom(result);
+      setTargetSeat("");
+      setVoterSeat("");
+      setNote("已撕毁警徽，本局无警长");
+    } catch (e) {
+      setError(e.message || "撕毁警徽失败");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clearSheriff = () => {
@@ -920,6 +1005,18 @@ export default function GMPanel() {
     if (target == null) return;
     const targetPlayer = requireAliveSeat(target, "投票目标");
     if (!targetPlayer) return;
+    if (inSheriffVote && sheriffCandidates.includes(parsedVoterSeat)) {
+      setNote("上警玩家不能参与警长投票");
+      return;
+    }
+    if (inVote && exileTieRound === 1 && exileTiedSeats.length > 0 && !exileTiedSeats.includes(target)) {
+      setNote("第二轮只能投给平票玩家");
+      return;
+    }
+    if (inSheriffVote && sheriffTieRound === 1 && sheriffTiedSeats.length > 0 && !sheriffTiedSeats.includes(target)) {
+      setNote("第二轮只能投给平票上警玩家");
+      return;
+    }
     if (parsedVoterSeat === target) {
       setNote("投票人不能投给自己");
       return;
@@ -972,125 +1069,72 @@ export default function GMPanel() {
     setNote(`已将 ${seat} 号设为上警投票目标`);
   };
 
-  const resolveSheriffElectionTie = () => {
-    const tally = voteTally;
-    if (tally.length === 0) return;
+  const resetVoteInput = () => {
+    setVoteRecords({});
+    setVoterSeat("");
+    setTargetSeat("");
+  };
 
-    const maxVotes = tally[0].count;
-    const tiedSeats = tally.filter((t) => t.count === maxVotes).map((t) => t.seat);
-
-    if (tiedSeats.length === 1) {
-      // No tie, set as sheriff
-      setSheriffSeat(tiedSeats[0]);
-      setVoteRecords({});
-      setNote(`警长已产生：${tiedSeats[0]} 号`);
-      return;
+  const applyVoteResolutionNote = (state) => {
+    if (!state) return;
+    if (state.outcome === "tie") {
+      setNote(`${state.tiedTargetSeats.join("、")} 号平票，进入第二轮投票。`);
+    } else if (state.outcome === "sheriff-elected") {
+      setNote(`警长已产生：${state.resolvedSeat} 号`);
+    } else if (state.outcome === "no-sheriff") {
+      setNote("第二轮投票仍平票，本局无警长");
+    } else if (state.outcome === "exiled") {
+      setNote(`${state.resolvedSeat} 号被放逐`);
+    } else if (state.outcome === "no-exile") {
+      setNote("第二轮投票仍平票，本轮无人被放逐，游戏进入夜晚");
     }
+  };
 
-    // Tie detected
-    if (sheriffTieRound === 0) {
-      // First tie round
-      setSheriffTieRound(1);
-      setSheriffTiedSeats(tiedSeats);
-      setSheriffCandidates(tiedSeats);
-      setVoteRecords({});
-      setNote(`产生平票！${tiedSeats.join("、")} 号需进行第二轮投票。`);
-    } else if (sheriffTieRound === 1) {
-      // Second round
-      if (tiedSeats.length === 1) {
-        setSheriffSeat(tiedSeats[0]);
-        setSheriffTieRound(0);
-        setSheriffTiedSeats([]);
-        setVoteRecords({});
-        setNote(`警长已产生：${tiedSeats[0]} 号`);
-      } else {
-        // Still tied in round 2, no sheriff
-        setSheriffSeat(null);
-        setSheriffTieRound(0);
-        setSheriffTiedSeats([]);
-        setSheriffCandidates([]);
-        setVoteRecords({});
-        setNote("第二轮投票仍平票，本局无警长");
-      }
+  const resolveSheriffElectionTie = async () => {
+    if (voteTally.length === 0) return;
+
+    try {
+      setLoading(true);
+      setError("");
+      const result = await resolveVote(room._id, {
+        type: "sheriff",
+        records: voteRecords,
+        candidates: sheriffCandidates,
+      });
+      setRoom(result);
+      resetVoteInput();
+      applyVoteResolutionNote(result.meta?.voteState);
+    } catch (e) {
+      setError(e.message || "警长投票结算失败");
+    } finally {
+      setLoading(false);
     }
   };
 
   const resolveExileVoteTie = async () => {
-    const tally = voteTally;
-    if (tally.length === 0) return;
+    if (voteTally.length === 0) return;
 
-    const maxVotes = tally[0].count;
-    const tiedSeats = tally.filter((t) => t.count === maxVotes).map((t) => t.seat);
-
-    if (tiedSeats.length === 1) {
-      // No tie, exile the player
-      try {
-        setLoading(true);
-        const result = await step(room._id, {
-          actor: "system",
-          action: "exile",
-          targetSeat: tiedSeats[0],
-        });
-        setRoom(result);
-        setVoteRecords({});
-        setExileTieRound(0);
-        setExileTiedSeats([]);
-        setNote(`${tiedSeats[0]} 号被放逐`);
-        setError("");
-      } catch (e) {
-        setError(e.message || "放逐失败");
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Tie detected
-    if (exileTieRound === 0) {
-      // First tie round
-      setExileTieRound(1);
-      setExileTiedSeats(tiedSeats);
-      // Update speech order to only show tied players
-      setSpeechOrder(tiedSeats);
-      setSpeechIndex(0);
-      setVoteRecords({});
-      setNote(`产生平票！${tiedSeats.join("、")} 号需重新发言，其他玩家重新投票。`);
-    } else if (exileTieRound === 1) {
-      // Second round
-      if (tiedSeats.length === 1) {
-        // Resolved to single player - call backend to exile
-        try {
-          setLoading(true);
-          const result = await step(room._id, {
-            actor: "system",
-            action: "exile",
-            targetSeat: tiedSeats[0],
-          });
-          setRoom(result);
-          setExileTieRound(0);
-          setExileTiedSeats([]);
-          setVoteRecords({});
-          setNote(`${tiedSeats[0]} 号被放逐`);
-          setError("");
-        } catch (e) {
-          setError(e.message || "放逐失败");
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        // Still tied in round 2, nobody exiled
-        setExileTieRound(0);
-        setExileTiedSeats([]);
-        setVoteRecords({});
-        setNote("第二轮投票仍平票，本轮无人被放逐，游戏进入夜晚");
-      }
+    try {
+      setLoading(true);
+      setError("");
+      const result = await resolveVote(room._id, {
+        type: "exile",
+        records: voteRecords,
+      });
+      setRoom(result);
+      resetVoteInput();
+      applyVoteResolutionNote(result.meta?.voteState);
+    } catch (e) {
+      setError(e.message || "放逐投票结算失败");
+    } finally {
+      setLoading(false);
     }
   };
 
   const renderPlayerMetaStrip = (player, isSheriffCandidate) => (
     <div className="rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-600">
       当前阶段：{phaseLabel(room.status)}
-      {sheriffSeat === player.seat && " · 警长"}
+      {activeSheriffSeat === player.seat && " · 警长"}
       {isSheriffCandidate && " · 上警"}
     </div>
   );
@@ -1168,86 +1212,35 @@ export default function GMPanel() {
     const isExpanded = playerCardPhase !== "night" && (expandedSeats.includes(player.seat) || currentSpeakerSeat === player.seat);
     const shouldShowExpandedActions = playerCardPhase === "speech" || playerCardPhase === "vote" || playerCardPhase === "sheriffVote";
     const voterSelectionActive = inVote || inSheriffVote;
+    const actions =
+      playerCardPhase === "night"
+        ? renderNightPlayerActions(player, isCurrentTarget)
+        : playerCardPhase === "speech"
+        ? renderSpeechPlayerActions(player, isExpanded, isSheriffCandidate)
+        : playerCardPhase === "vote"
+        ? renderVotePlayerActions(player, isExpanded)
+        : playerCardPhase === "sheriffVote"
+        ? renderSheriffVotePlayerActions(player, isExpanded, isSheriffCandidate)
+        : null;
+    const expandedContent =
+      isExpanded && shouldShowExpandedActions ? renderPlayerMetaStrip(player, isSheriffCandidate) : null;
 
     return (
-      <div
+      <PlayerCard
         key={player.seat}
-        className={`rounded-2xl border bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition xl:rounded-[28px] ${
-          isCurrentVoter && voterSelectionActive
-            ? "border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200"
-            : player.alive
-            ? "border-gray-200"
-            : "border-red-200 bg-red-50/60"
-        } ${
-          isExpanded ? "col-span-full space-y-2 p-3 sm:p-4 xl:p-4" : "p-2 sm:p-3 xl:p-4"
-        }`}
-      >
-        <div className={`flex flex-col gap-2 xl:flex-row xl:gap-3 ${isExpanded ? "xl:items-start xl:justify-between" : "xl:items-start xl:justify-between"}`}>
-          <div
-            role="button"
-            tabIndex={0}
-            className={`flex min-w-0 flex-1 gap-2 text-left sm:gap-3 cursor-pointer ${isExpanded ? "items-start" : "items-start py-0.5"}`}
-            onClick={() => handlePlayerCardPrimaryClick(player)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handlePlayerCardPrimaryClick(player);
-              }
-            }}
-          >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-700 sm:h-8 sm:w-8 sm:text-sm xl:h-9 xl:w-9">
-              {player.seat}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="space-y-1">
-                <div className="break-words text-[12px] font-semibold leading-4 text-gray-900 sm:text-[13px] xl:text-sm xl:leading-5">
-                  {player.nickname}
-                </div>
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-[11px] ${roleMeta.accent}`}>
-                    {roleMeta.label}
-                  </span>
-                  <span
-                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-[11px] ${
-                      player.alive
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-red-200 bg-red-50 text-red-700"
-                    }`}
-                  >
-                    {player.alive ? "存活" : "出局"}
-                  </span>
-                  {sheriffSeat === player.seat && (
-                    <span className="badge border-yellow-300 bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-700 sm:px-2 sm:text-[11px]">
-                      警长
-                    </span>
-                  )}
-                  {currentSpeakerSeat === player.seat && (
-                    <span className="badge border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 sm:px-2 sm:text-[11px]">
-                      发言中
-                    </span>
-                  )}
-                </div>
-                {isCurrentTarget && (
-                  <div className="text-[10px] font-medium text-emerald-700 sm:text-xs">当前选中</div>
-                )}
-                {isCurrentVoter && voterSelectionActive && (
-                  <div className="text-[10px] font-medium text-emerald-700 sm:text-xs">当前投票人</div>
-                )}
-              </div>
-              {playerCardPhase === "night" && renderNightPlayerActions(player, isCurrentTarget)}
-            </div>
-          </div>
-
-        </div>
-
-        {playerCardPhase === "speech" && renderSpeechPlayerActions(player, isExpanded, isSheriffCandidate)}
-        {playerCardPhase === "vote" && renderVotePlayerActions(player, isExpanded)}
-        {playerCardPhase === "sheriffVote" && renderSheriffVotePlayerActions(player, isExpanded, isSheriffCandidate)}
-
-        {isExpanded && shouldShowExpandedActions && (
-          renderPlayerMetaStrip(player, isSheriffCandidate)
-        )}
-      </div>
+        player={player}
+        roleMeta={roleMeta}
+        isExpanded={isExpanded}
+        isHighlighted={isCurrentVoter && voterSelectionActive}
+        isCurrentTarget={isCurrentTarget}
+        isCurrentVoter={isCurrentVoter}
+        voterSelectionActive={voterSelectionActive}
+        isSheriff={activeSheriffSeat === player.seat}
+        isCurrentSpeaker={currentSpeakerSeat === player.seat}
+        onPrimaryClick={() => handlePlayerCardPrimaryClick(player)}
+        actions={actions}
+        expandedContent={expandedContent}
+      />
     );
   };
 
@@ -1378,14 +1371,12 @@ export default function GMPanel() {
   const renderSheriffAreaPanel = () => {
     // State 1: Sheriff dead - show badge transfer UI
     if (sheriffIsDead) {
-      const currentSheriffseat = sheriffSeat;
+      const currentSheriffseat = roomMeta.deadSheriffSeat ?? sheriffSeat;
       return (
         <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium text-gray-700">警徽移交</div>
-            <button className="btn-secondary text-xs" onClick={clearSheriff}>
-              清空
-            </button>
+            <span className="text-xs font-medium text-red-600">待处理</span>
           </div>
           <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
             警长 {currentSheriffseat} 号已出局，请选择移交对象
@@ -1425,9 +1416,14 @@ export default function GMPanel() {
               选择一名存活的玩家作为新警长
             </div>
           </div>
-          <button className="btn-primary" onClick={transferSheriffBadge}>
-            确认移交警徽
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button className="btn-primary w-full sm:w-auto" onClick={transferSheriffBadge} disabled={loading}>
+              确认移交警徽
+            </button>
+            <button className="btn-secondary w-full sm:w-auto" onClick={tearSheriffBadge} disabled={loading}>
+              撕毁警徽
+            </button>
+          </div>
         </div>
       );
     }
@@ -1447,6 +1443,20 @@ export default function GMPanel() {
           </div>
           <div className="rounded-xl border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500">
             警长已确定，选举流程已结束
+          </div>
+        </div>
+      );
+    }
+
+    if (noSheriff || (voteState?.type === "sheriff" && voteState.outcome === "no-sheriff")) {
+      return (
+        <div className="space-y-3 rounded-2xl border border-gray-300 bg-gray-100 p-4 opacity-60">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-gray-700">上警与警长</div>
+            <span className="text-xs font-medium text-gray-600">(已结束)</span>
+          </div>
+          <div className="rounded-xl border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            第二轮仍平票，本局无警长
           </div>
         </div>
       );
@@ -1511,9 +1521,43 @@ export default function GMPanel() {
             </div>
           )}
         </div>
-        <button className="btn-primary" onClick={electSheriff}>
-          将当前目标设为警长
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button className="btn-primary w-full sm:w-auto" onClick={recordVote}>
+            记录投票
+          </button>
+          <button className="btn-secondary w-full sm:w-auto" onClick={clearVotes}>
+            清空投票
+          </button>
+          <button className="btn-primary w-full sm:w-auto" onClick={resolveSheriffElectionTie} disabled={voteTally.length === 0}>
+            {sheriffTieRound === 1 ? "结束第二轮投票" : "确认上警结果"}
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-3">
+            <div className="mb-2 text-sm font-medium text-gray-700">投票明细</div>
+            <div className="space-y-1 text-sm text-gray-600">
+              {Object.keys(voteRecords).length === 0 && <div>暂无投票记录</div>}
+              {Object.entries(voteRecords)
+                .sort((a, b) => Number(a[0]) - Number(b[0]))
+                .map(([seat, target]) => (
+                  <div key={seat}>
+                    {seat} 号 {"->"} {target} 号
+                  </div>
+                ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-3">
+            <div className="mb-2 text-sm font-medium text-gray-700">得票统计</div>
+            <div className="space-y-1 text-sm text-gray-600">
+              {voteTally.length === 0 && <div>暂无统计</div>}
+              {voteTally.map((item) => (
+                <div key={item.seat}>
+                  {item.seat} 号：{item.count} 票
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -1528,16 +1572,16 @@ export default function GMPanel() {
             <div className="text-sm font-medium text-gray-700">发言顺序</div>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600">
-            {sheriffSeat != null
+            {activeSheriffSeat != null
               ? lastKilledSeats.length > 0
                 ? `昨夜死亡 ${lastKilledLabel} 号，由警长决定从参考死者 ${lastKilledSeat} 号左侧或右侧开始。`
-                : `平安夜，由警长决定从警长 ${sheriffSeat} 号左侧或右侧开始。`
+                : `平安夜，由警长决定从警长 ${activeSheriffSeat} 号左侧或右侧开始。`
               : lastKilledSeats.length > 0
               ? `昨夜死亡 ${lastKilledLabel} 号，默认从参考死者 ${lastKilledSeat} 号右侧开始。`
               : "平安夜且无警长，默认从 1 号位方向顺序开始。"}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            {sheriffSeat != null ? (
+            {activeSheriffSeat != null ? (
               <>
                 <button className="btn-primary w-full sm:w-auto" onClick={() => applyAutoSpeechRule("left")}>
                   警长定左
@@ -1645,7 +1689,7 @@ export default function GMPanel() {
       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
         <div className="mb-3 text-sm font-medium text-gray-700">投票目标选择</div>
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
-          {sortedPlayers.map((player) => {
+          {exileVoteTargets.map((player) => {
             const selected = parsedTargetSeat === player.seat;
             return (
               <button

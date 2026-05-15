@@ -41,6 +41,22 @@ export async function step(id, payload) {
 }
 
 /**
+ * 结算投票
+ */
+export async function resolveVote(id, payload) {
+  const { data } = await api.post(`/rooms/${id}/vote/resolve`, payload);
+  return data;
+}
+
+/**
+ * 警徽移交 / 撕毁
+ */
+export async function transferSheriff(id, payload) {
+  const { data } = await api.post(`/rooms/${id}/sheriff/transfer`, payload);
+  return data;
+}
+
+/**
  * 撤销最后一步
  */
 export async function undo(id, payload = {}) {
