@@ -65,6 +65,11 @@ export const messages = {
         description: "快速查看最近的产品改进，让首页与主持体验保持更清爽、稳定。",
         items: [
           {
+            version: "v0.4",
+            title: "核心流程稳定化",
+            body: "优化夜晚结算、放逐投票、警长竞选与警徽移交流程。更多关键游戏状态已由后端持久化，刷新页面后主持流程更加稳定可靠。",
+          },
+          {
             version: "v1.3",
             title: "移动端布局优化",
             body: "更清爽的间距与自适应布局，手机和平板上也能顺滑阅读。",
@@ -529,6 +534,12 @@ export const messages = {
         subtitle: "What’s New",
         description: "A quick view of recent product updates that keep the homepage and moderator experience polished.",
         items: [
+          {
+            version: "v0.4",
+            title: "Core Flow Stabilization",
+            body:
+              "Improved night resolution, vote handling, sheriff election, and badge transfer flows. GodsBooklet now keeps more game state in the backend, making live moderation more reliable after refreshes and complex rule outcomes.",
+          },
           {
             version: "v1.3",
             title: "Mobile layout refinements",
