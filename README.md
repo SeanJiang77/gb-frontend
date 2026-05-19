@@ -3,12 +3,37 @@
 React + Vite + Tailwind + Axios + Zustand.
 
 ## Setup
-1. `.env` -> `VITE_API_BASE=http://localhost:3000`
-2. `npm i`
-3. `npm run dev`
+Required local environment:
+- Node.js 22.12.0
+- npm 10 or newer
+
+Setup:
+1. Install and select the project Node version:
+```bash
+nvm install 22.12.0
+nvm use
+```
+2. `.env` -> `VITE_API_BASE=http://localhost:3000`
+3. Install dependencies from the lockfile:
+```bash
+npm ci
+```
+4. Run the dev server:
+```bash
+npm run dev
+```
 
 Production build:
 ```bash
+nvm use
+npm run build
+```
+
+Verification:
+```bash
+nvm use
+node -v
+npm ci
 npm run build
 ```
 
